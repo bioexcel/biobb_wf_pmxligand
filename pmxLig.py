@@ -16,32 +16,33 @@ from gropy.Gro import Gro
 from biobb_common.configuration import settings
 from biobb_common.tools import file_utils as fu
 
-# biobb pmx modules
-from biobb_pmx.pmx.mutate import Mutate
-from biobb_pmx.pmx.gentop import Gentop
-from biobb_pmx.pmx.analyse import Analyse
+# pycompss: biobb pmx modules
+from biobb_adapters.pycompss.biobb_pmx.pmx.mutate_pc import mutate_pc
+from biobb_adapters.pycompss.biobb_pmx.pmx.gentop_pc import gentop_pc
+from biobb_adapters.pycompss.biobb_pmx.pmx.analyse_pc import analyse_pc
 
-# biobb md modules
-from biobb_md.gromacs.pdb2gmx import Pdb2gmx
-from biobb_md.gromacs.make_ndx import MakeNdx
-from biobb_md.gromacs.grompp import Grompp
-from biobb_md.gromacs.mdrun import Mdrun
-from biobb_md.gromacs_extra.append_ligand import AppendLigand
+# pycompss: biobb md modules
+from biobb_adapters.pycompss.biobb_md.gromacs.pdb2gmx_pc import pdb2gmx_pc
+from biobb_adapters.pycompss.biobb_md.gromacs.make_ndx_pc import make_ndx_pc
+from biobb_adapters.pycompss.biobb_md.gromacs.grompp_pc import grompp_pc
+from biobb_adapters.pycompss.biobb_md.gromacs.grompp_cpt_pc import grompp_cpt_pc
+from biobb_adapters.pycompss.biobb_md.gromacs.mdrun_pc import mdrun_pc
+from biobb_adapters.pycompss.biobb_md.gromacs.mdrun_cpt_pc import mdrun_cpt_pc
+from biobb_adapters.pycompss.biobb_md.gromacs_extra.append_ligand_pc import append_ligand_pc
 
-# biobb analysis module
-from biobb_analysis.gromacs.gmx_image import GMXImage
-from biobb_analysis.gromacs.gmx_trjconv_str_ens import GMXTrjConvStrEns
+# pycompss: biobb analysis modules
+from biobb_adapters.pycompss.biobb_analysis.gromacs.gmx_image_pc import gmx_image_pc
+from biobb_adapters.pycompss.biobb_analysis.gromacs.gmx_trjconv_str_ens_pc import gmx_trjconv_str_ens_pc
+
 
 def main(config, system=None):
     start_time = time.time()
+
+    
     conf = settings.ConfReader(config, system)
     global_log, _ = fu.get_logs(path=conf.get_working_dir_path(), light_format=True)
     global_prop = conf.get_prop_dic(global_log=global_log)
     global_paths = conf.get_paths_dic()
-
-    # Added to avoid computing again what is already computed...
-    # Get Current Working Directory
-    #cwd = os.getcwd()
 
     dhdl_paths_listA = []
     dhdl_paths_listB = []
@@ -50,50 +51,44 @@ def main(config, system=None):
         ensemble_prop = conf.get_prop_dic(prefix=ensemble, global_log=global_log)
         ensemble_paths = conf.get_paths_dic(prefix=ensemble)
 
+        # step0_image
         global_log.info(ensemble+" Step 0: gmx image: Imaging trajectories to remove PBC issues")
         ensemble_paths['step0_image']['input_traj_path'] = conf.properties['input_trajs'][ensemble]['input_traj_path']
         ensemble_paths['step0_image']['input_top_path'] = conf.properties['input_trajs'][ensemble]['input_tpr_path']
-        GMXImage(**ensemble_paths["step0_image"], properties=ensemble_prop["step0_image"]).launch()
+        gmx_image_pc(**ensemble_paths["step0_image"], properties=ensemble_prop["step0_image"])
 
+        # step0_trjconv
         global_log.info(ensemble+" Step 0: gmx trjconv: Extract snapshots from equilibrium trajectories")
         ensemble_paths['step0_trjconv']['input_top_path'] = conf.properties['input_trajs'][ensemble]['input_tpr_path']
-        GMXTrjConvStrEns(**ensemble_paths["step0_trjconv"], properties=ensemble_prop["step0_trjconv"]).launch()
+        gmx_trjconv_str_ens_pc(**ensemble_paths["step0_trjconv"], properties=ensemble_prop["step0_trjconv"])
 
-        with zipfile.ZipFile(ensemble_paths["step0_trjconv"]["output_str_ens_path"], 'r') as zip_f:
+        with zipfile.ZipFile(ensemble_paths["step0_trjconv"]["output_str_ens_path"]) as zip_f:
             zip_f.extractall()
             state_pdb_list = zip_f.namelist()
-
 
         for pdb_path in state_pdb_list:
             pdb_name = os.path.splitext(pdb_path)[0]
             prop = conf.get_prop_dic(prefix=os.path.join(ensemble, pdb_name), global_log=global_log)
             paths = conf.get_paths_dic(prefix=os.path.join(ensemble, pdb_name))
 
-            # Added to avoid computing again what is already computed...
-            #global_log.info("CHECKING: " + os.path.join(cwd,ensemble,pdb_name,'ti.dhdl.xvg'))
-            #print (os.path.join(cwd,ensemble,pdb_name,'ti.dhdl.xvg'))
-            #if os.path.isfile(os.path.join(cwd,ensemble,pdb_name,'ti.dhdl.xvg')):
-            #    print("Frame " + pdb + " already computed. Jumping to next frame.")
-            #else:
-
-            #if(pdb_name == "frame19" or pdb_name == "frame39" or pdb_name == "frame73"):
+            # TODO: Check if this should be removed, replaced biobb_utils
             if(pdb_name == "frame98" or pdb_name == "frame12"):
                 continue
 
-            #Create and launch bb
+            # step1_pmx_mutate
             global_log.info(ensemble+" Step 1: pmx mutate: Generate Hybrid Structure")
             paths['step1_pmx_mutate']['input_structure_path'] = pdb_path
             prop['step1_pmx_mutate']['mutation_list'] = mutation
-            Mutate(**paths["step1_pmx_mutate"], properties=prop["step1_pmx_mutate"]).launch()
+            mutate_pc(**paths["step1_pmx_mutate"], properties=prop["step1_pmx_mutate"])
 
-            # Find out if generated gro file has any dummy atoms!! If so, run minimization (steps 5 and 6). If not, skip it!
-            # PATH: wf_pmx/stateA/frame0/step1_pmx_mutate/mut.gro
-
+            # TODO: Check if this should be removed replaced biobb_utils
             if ensemble == 'stateA':
                 mut = "L2R"
             elif ensemble == 'stateB':
                 mut = "R2L"
 
+            # TODO: Check if this should be removed,  replaced biobb_utils
+            # Grep for dummy atoms
             cmd = "grep "+ mut +" wf_pmx/" + ensemble +"/"+pdb_name+"/step1_pmx_mutate/mut.gro  | cut -c12-15 |  sed 's/ //g' | sed -n '/^D/p'"
             process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
             out, err = process.communicate()
@@ -101,136 +96,89 @@ def main(config, system=None):
             dummy = False
             if len(out.decode("utf-8")) >= 2 :
                 dummy = True
-            #dummy = out.decode("utf-8")
-
             print("CMD:" + cmd)
             print("DUMMY:\n" + str(out.decode("utf-8")))
 
-            # Step 2: gmx pdb2gmx: Generate Topology
-            # From pmx tutorial:
-            # gmx pdb2gmx -f mut.pdb -ff amber99sb-star-ildn-mut -water tip3p -o pdb2gmx.pdb
-            global_log.info(ensemble+" Step 2: gmx pdb2gmx: Generate Topology")
-
-            # First of all, remove ligand from the GRO structure
-            #cmd = "grep -v AQ4 wf_pmx/" + ensemble +"/"+pdb_name+"/step1_pmx_mutate/mut.gro > structure.nolig.gro"
-            #process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
-            #out, err = process.communicate()
-            #process.wait()
-            #print (out.decode("utf-8"))
-
-            # First of all, remove ligand from the GRO structure
-            # Using library for gro files manipulation (gropy)
-            # https://github.com/caizkun/gropy
+            # TODO: Replace by biobb_utils
+            # Remove ligand
             nolig_gro = mut +"_" + ensemble +"_"+pdb_name+".nolig.gro"
             system_gro = Gro()
             system_gro.read_gro_file(paths['step1_pmx_mutate']['output_structure_path'])
-            system_gro.remove_residue_entry(292,'IRE')
-            #system_gro.renumber_atoms()
+            system_gro.remove_residue_entry(292, 'IRE')
             system_gro.write_gro_file(nolig_gro)
 
-            # Now use this apo structure to generate the GROMACS topology
+            # step2_gmx_pdb2gmx
             paths['step2_gmx_pdb2gmx']['input_pdb_path'] = nolig_gro
-            Pdb2gmx(**paths["step2_gmx_pdb2gmx"], properties=prop["step2_gmx_pdb2gmx"]).launch()
+            global_log.info(ensemble + " Step 2: gmx pdb2gmx: Generate Topology")
+            pdb2gmx_pc(**paths["step2_gmx_pdb2gmx"], properties=prop["step2_gmx_pdb2gmx"])
 
+            # TODO: Replace by biobb_utils
+            # WARNING: It's using step1 input not step2
             # Re-ordering gro file, first ions, then water molecules
-            # Using library for gro files manipulation (gropy)
-            # https://github.com/caizkun/gropy
             ordered_gro = mut +"_" + ensemble +"_"+pdb_name+".sorted.gro"
             system_gro = Gro()
-            #system_gro.read_gro_file(paths['step2_gmx_pdb2gmx']['output_gro_path'])
             system_gro.read_gro_file(paths['step1_pmx_mutate']['output_structure_path'])
             system_gro.sort_residues2(['NA', 'CL', 'SOL'])
             system_gro.renumber_atoms()
             system_gro.write_gro_file(ordered_gro)
 
-            # And now add the ligand to the previously generated topology
-            # Step 2_lig: gmx appendLigand: Append a ligand to a GROMACS topology
+            # step2_lig_gmx_appendLigand
             global_log.info(ensemble+" Step 2_lig: gmx appendLigand: Append a ligand to a GROMACS topology")
-            AppendLigand(**paths["step2_lig_gmx_appendLigand"], properties=prop["step2_lig_gmx_appendLigand"]).launch()
+            append_ligand_pc(**paths["step2_lig_gmx_appendLigand"], properties=prop["step2_lig_gmx_appendLigand"])
 
-            # Step 3: pmx gentop: Generate Hybrid Topology
-            # From pmx tutorial:
-            # python generate_hybrid_topology.py -itp topol_Protein.itp -o topol_Protein.itp -ff amber99sb-star-ildn-mut
+            # step3_pmx_gentop
             global_log.info(ensemble+" Step 3: pmx gentop: Generate Hybrid Topology")
-            Gentop(**paths["step3_pmx_gentop"], properties=prop["step3_pmx_gentop"]).launch()
+            gentop_pc(**paths["step3_pmx_gentop"], properties=prop["step3_pmx_gentop"])
 
-            #if ensemble == 'stateA':
             if not dummy:
-
-                # In stateA (lamdda=0), if the residue to be mutated is smaller than the new one, no dummy atom is generated in the hybrid topology.
-                # This means we don't need the energy minimization step, so simply get the output
-                # from the step2 (pdb2gmx) as output from the step6 (energy minimization)
-                # From pmx tutorial:
-                # There are no dummies in this state at lambda=0, therefore simply convert mut.pdb to emout.gro
-                #paths['step7_gmx_grompp']['input_gro_path'] = paths['step2_gmx_pdb2gmx']['output_gro_path']
                 paths['step7_gmx_grompp']['input_gro_path'] = ordered_gro
-
-            #elif ensemble == 'stateB':
             else:
-
-                # Step 4 (Dummies): gmx make_ndx: Generate Gromacs Index File to select atoms to freeze
-                # From pmx tutorial:
-                # echo -e "a D*\n0 & ! 19\nname 20 FREEZE\nq\n" | gmx make_ndx -f frame0/pdb2gmx.pdb -o index.ndx
+                # step4_gmx_makendx
                 global_log.info(ensemble+" Step 4 (Dummies): gmx make_ndx: Generate Gromacs Index file to select atoms to freeze")
                 paths['step4_gmx_makendx']['input_structure_path'] = ordered_gro
-                MakeNdx(**paths["step4_gmx_makendx"], properties=prop["step4_gmx_makendx"]).launch()
+                make_ndx_pc(**paths["step4_gmx_makendx"], properties=prop["step4_gmx_makendx"])
 
-                # Step 5 (Dummies): gmx grompp: Creating portable binary run file for energy minimization
-                # From pmx tutorial:
-                # gmx grompp -c pdb2gmx.pdb -p topol.top -f ../../mdp/em_FREEZE.mdp -o em.tpr -n ../index.ndx
+                # step5_gmx_grompp
                 global_log.info(ensemble+" Step 5 (Dummies): gmx grompp: Creating portable binary run file for energy minimization")
                 paths['step5_gmx_grompp']['input_gro_path'] = ordered_gro
-                Grompp(**paths["step5_gmx_grompp"], properties=prop["step5_gmx_grompp"]).launch()
+                grompp_pc(**paths["step5_gmx_grompp"], properties=prop["step5_gmx_grompp"])
 
-                # Step 6: gmx mdrun: Running energy minimization
-                # From pmx tutorial:
-                # gmx mdrun -s em.tpr -c emout.gro -v
+                # step6_gmx_mdrun
                 global_log.info(ensemble+" Step 6 (Dummies): gmx mdrun: Running energy minimization")
-                Mdrun(**paths["step6_gmx_mdrun"], properties=prop["step6_gmx_mdrun"]).launch()
+                mdrun_pc(**paths["step6_gmx_mdrun"], properties=prop["step6_gmx_mdrun"])
 
-                #paths['step7_gmx_grompp']['input_ndx_path'] = paths['step4_gmx_makendx']['output_ndx_path']
-
-            # Step 7: gmx grompp: Creating portable binary run file for system equilibration
-            # From pmx tutorial:
-            # gmx grompp -c emout.gro -p topol.top -f ../../mdp/eq_20ps.mdp -o eq_20ps.tpr -maxwarn 1
+            # step7_gmx_grompp
             global_log.info(ensemble+" Step 7: gmx grompp: Creating portable binary run file for system equilibration")
-            Grompp(**paths["step7_gmx_grompp"], properties=prop["step7_gmx_grompp"]).launch()
+            grompp_pc(**paths["step7_gmx_grompp"], properties=prop["step7_gmx_grompp"])
 
-            # Step 8: gmx mdrun: Running system equilibration
-            # From pmx tutorial:
-            # gmx mdrun -s eq_20ps.tpr -c eqout.gro -v
+            # step8_gmx_mdrun
             global_log.info(ensemble+" Step 8: gmx mdrun: Running system equilibration")
-            Mdrun(**paths["step8_gmx_mdrun"], properties=prop["step8_gmx_mdrun"]).launch()
+            mdrun_pc(**paths["step8_gmx_mdrun"], properties=prop["step8_gmx_mdrun"])
 
-            # Step 9: gmx grompp: Creating portable binary run file for thermodynamic integration (ti)
-            # From pmx tutorial:
-            # gmx grompp -c eqout.gro -p topol.top -f ../../mdp/ti.mdp -o ti.tpr -maxwarn 1
+            # step9_gmx_grompp
             global_log.info(ensemble+" Step 9: Creating portable binary run file for thermodynamic integration (ti)")
-            Grompp(**paths["step9_gmx_grompp"], properties=prop["step9_gmx_grompp"]).launch()
+            grompp_pc(**paths["step9_gmx_grompp"], properties=prop["step9_gmx_grompp"])
 
-            # Step 10: gmx mdrun: Running thermodynamic integration
-            # From pmx tutorial:
-            # gmx mdrun -s ti.tpr -c eqout.gro -v
+            # step10_gmx_mdrun
             global_log.info(ensemble+" Step 10: gmx mdrun: Running thermodynamic integration")
-            Mdrun(**paths["step10_gmx_mdrun"], properties=prop["step10_gmx_mdrun"]).launch()
+            mdrun_pc(**paths["step10_gmx_mdrun"], properties=prop["step10_gmx_mdrun"])
+
             if ensemble == "stateA":
                 dhdl_paths_listA.append(paths["step10_gmx_mdrun"]["output_dhdl_path"])
             elif ensemble == "stateB":
                 dhdl_paths_listB.append(paths["step10_gmx_mdrun"]["output_dhdl_path"])
 
-    #Creating zip file containing all the dhdl files
+    # Creating zip file containing all the dhdl files
     dhdlA_path = 'dhdlA.zip'
     dhdlB_path = 'dhdlB.zip'
     fu.zip_list(dhdlA_path, dhdl_paths_listA)
     fu.zip_list(dhdlB_path, dhdl_paths_listB)
 
-    # Step 11: pmx analyse: Calculate free energies from fast growth thermodynamic integration simulations
-    # From pmx tutorial:
-    # python analyze_dhdl.py -fA ../stateA/frame*/dhdl*.xvg -fB ../stateB/frame*/dhdl*.xvg --nbins 25 -t 293 --reverseB
+    # step11_pmx_analyse
     global_log.info(ensemble+" Step 11: pmx analyse: Calculate free energies from fast growth thermodynamic integration simulations")
     global_paths["step11_pmx_analyse"]["input_A_xvg_zip_path"]=dhdlA_path
     global_paths["step11_pmx_analyse"]["input_B_xvg_zip_path"]=dhdlB_path
-    Analyse(**global_paths["step11_pmx_analyse"], properties=global_prop["step11_pmx_analyse"]).launch()
+    analyse_pc(**global_paths["step11_pmx_analyse"], properties=global_prop["step11_pmx_analyse"])
 
     elapsed_time = time.time() - start_time
     global_log.info('')
