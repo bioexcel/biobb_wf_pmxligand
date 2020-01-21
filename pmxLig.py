@@ -31,12 +31,11 @@ from biobb_adapters.pycompss.biobb_analysis.gromacs.gmx_trjconv_str_ens_pc impor
 # pycompss: biobb structure utils modules
 from biobb_adapters.pycompss.biobb_structure_utils.utils.extract_atoms_pc import extract_atoms_pc
 from biobb_adapters.pycompss.biobb_structure_utils.utils.remove_ligand_pc import remove_ligand_pc
+from biobb_adapters.pycompss.biobb_structure_utils.utils.sort_gro_residues_pc import sort_gro_residues_pc
 
 
 def main(config, system=None):
     start_time = time.time()
-
-    
     conf = settings.ConfReader(config, system)
     global_log, _ = fu.get_logs(path=conf.get_working_dir_path(), light_format=True)
     global_prop = conf.get_prop_dic(global_log=global_log)
@@ -70,7 +69,7 @@ def main(config, system=None):
             paths = conf.get_paths_dic(prefix=os.path.join(ensemble, pdb_name))
 
             # TODO: Check if this should be removed
-            if(pdb_name == "frame98" or pdb_name == "frame12"):
+            if pdb_name == "frame98" or pdb_name == "frame12":
                 continue
 
             # step1_pmx_mutate
@@ -113,19 +112,21 @@ def main(config, system=None):
             remove_ligand_pc(**paths['remove_ligand'], properties=prop['remove_ligand'])
 
             # step2_gmx_pdb2gmx
-            paths['step2_gmx_pdb2gmx']['input_pdb_path'] = nolig_gro
             global_log.info(ensemble + " Step 2: gmx pdb2gmx: Generate Topology")
             pdb2gmx_pc(**paths["step2_gmx_pdb2gmx"], properties=prop["step2_gmx_pdb2gmx"])
 
-            # TODO: Replace by biobb_utils
-            # WARNING: It's using step1 input not step2
-            # Re-ordering gro file, first ions, then water molecules
-            ordered_gro = mut +"_" + ensemble +"_"+pdb_name+".sorted.gro"
-            system_gro = Gro()
-            system_gro.read_gro_file(paths['step1_pmx_mutate']['output_structure_path'])
-            system_gro.sort_residues2(['NA', 'CL', 'SOL'])
-            system_gro.renumber_atoms()
-            system_gro.write_gro_file(ordered_gro)
+            # # TODO: Replace by biobb_utils
+            # # WARNING: It's using step1 input not step2
+            # # Re-ordering gro file, first ions, then water molecules
+            # ordered_gro = mut +"_" + ensemble +"_"+pdb_name+".sorted.gro"
+            # system_gro = Gro()
+            # system_gro.read_gro_file(paths['step1_pmx_mutate']['output_structure_path'])
+            # system_gro.sort_residues2(['NA', 'CL', 'SOL'])
+            # system_gro.renumber_atoms()
+            # system_gro.write_gro_file(ordered_gro)
+
+            # sort_gro
+            sort_gro_residues_pc(**paths['sort_gro'], properties=prop['sort_gro'])
 
             # step2_lig_gmx_appendLigand
             global_log.info(ensemble+" Step 2_lig: gmx appendLigand: Append a ligand to a GROMACS topology")
@@ -136,16 +137,14 @@ def main(config, system=None):
             gentop_pc(**paths["step3_pmx_gentop"], properties=prop["step3_pmx_gentop"])
 
             if not dummy:
-                paths['step7_gmx_grompp']['input_gro_path'] = ordered_gro
+                paths['step7_gmx_grompp']['input_gro_path'] = paths['sort_gro']['output_gro_path']
             else:
                 # step4_gmx_makendx
                 global_log.info(ensemble+" Step 4 (Dummies): gmx make_ndx: Generate Gromacs Index file to select atoms to freeze")
-                paths['step4_gmx_makendx']['input_structure_path'] = ordered_gro
                 make_ndx_pc(**paths["step4_gmx_makendx"], properties=prop["step4_gmx_makendx"])
 
                 # step5_gmx_grompp
                 global_log.info(ensemble+" Step 5 (Dummies): gmx grompp: Creating portable binary run file for energy minimization")
-                paths['step5_gmx_grompp']['input_gro_path'] = ordered_gro
                 grompp_pc(**paths["step5_gmx_grompp"], properties=prop["step5_gmx_grompp"])
 
                 # step6_gmx_mdrun

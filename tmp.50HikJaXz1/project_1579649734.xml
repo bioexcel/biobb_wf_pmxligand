@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Project>
+  <MasterNode>
+    <SharedDisks>
+      <AttachedDisk Name="gpfs">
+        <MountPoint>/gpfs/</MountPoint>
+      </AttachedDisk>
+      <AttachedDisk Name="gpfs2">
+        <MountPoint>/.statelite/tmpfs/gpfs/</MountPoint>
+      </AttachedDisk>
+    </SharedDisks>
+  </MasterNode>
+
+  <ComputeNode Name="s07r2b10">
+    <InstallDir>/apps/COMPSs/2.6</InstallDir>
+    <WorkingDir>/home/bsc23/bsc23210/macshare/biobb_wf_pmxligand/tmp.50HikJaXz1</WorkingDir>
+    <Application>
+      <LibraryPath>/home/bsc23/bsc23210/macshare/biobb_wf_pmxligand</LibraryPath>
+    </Application>
+  </ComputeNode>
+ 
+</Project>
