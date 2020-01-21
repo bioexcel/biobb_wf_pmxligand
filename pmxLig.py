@@ -1,16 +1,10 @@
 #!/usr/bin/env python3
 
 import os
-import sys
 import zipfile
 import time
 import argparse
-import subprocess
-
-# gropy library to manipulate gro files
-file_path = '/orozco/homes/adam/biobbdev/gropy/gropy-master/'
-sys.path.append(os.path.dirname(file_path))
-from gropy.Gro import Gro
+from biobb_structure_utils.gro_lib.gro import Gro
 
 # biobb common modules
 from biobb_common.configuration import settings
@@ -33,6 +27,10 @@ from biobb_adapters.pycompss.biobb_md.gromacs_extra.append_ligand_pc import appe
 # pycompss: biobb analysis modules
 from biobb_adapters.pycompss.biobb_analysis.gromacs.gmx_image_pc import gmx_image_pc
 from biobb_adapters.pycompss.biobb_analysis.gromacs.gmx_trjconv_str_ens_pc import gmx_trjconv_str_ens_pc
+
+# pycompss: biobb structure utils modules
+from biobb_adapters.pycompss.biobb_structure_utils.utils.extract_atoms_pc import extract_atoms_pc
+from biobb_adapters.pycompss.biobb_structure_utils.utils.remove_ligand_pc import remove_ligand_pc
 
 
 def main(config, system=None):
@@ -71,7 +69,7 @@ def main(config, system=None):
             prop = conf.get_prop_dic(prefix=os.path.join(ensemble, pdb_name), global_log=global_log)
             paths = conf.get_paths_dic(prefix=os.path.join(ensemble, pdb_name))
 
-            # TODO: Check if this should be removed, replaced biobb_utils
+            # TODO: Check if this should be removed
             if(pdb_name == "frame98" or pdb_name == "frame12"):
                 continue
 
@@ -89,23 +87,30 @@ def main(config, system=None):
 
             # TODO: Check if this should be removed,  replaced biobb_utils
             # Grep for dummy atoms
-            cmd = "grep "+ mut +" wf_pmx/" + ensemble +"/"+pdb_name+"/step1_pmx_mutate/mut.gro  | cut -c12-15 |  sed 's/ //g' | sed -n '/^D/p'"
-            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
-            out, err = process.communicate()
-            process.wait()
-            dummy = False
-            if len(out.decode("utf-8")) >= 2 :
-                dummy = True
-            print("CMD:" + cmd)
-            print("DUMMY:\n" + str(out.decode("utf-8")))
+            # cmd = "grep "+ mut +" wf_pmx/" + ensemble +"/"+pdb_name+"/step1_pmx_mutate/mut.gro  | cut -c12-15 |  sed 's/ //g' | sed -n '/^D/p'"
+            # process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+            # out, err = process.communicate()
+            # process.wait()
+            # dummy = False
+            # if len(out.decode("utf-8")) >= 2 :
+            #     dummy = True
+            # print("CMD:" + cmd)
+            # print("DUMMY:\n" + str(out.decode("utf-8")))
 
-            # TODO: Replace by biobb_utils
-            # Remove ligand
-            nolig_gro = mut +"_" + ensemble +"_"+pdb_name+".nolig.gro"
-            system_gro = Gro()
-            system_gro.read_gro_file(paths['step1_pmx_mutate']['output_structure_path'])
-            system_gro.remove_residue_entry(292, 'IRE')
-            system_gro.write_gro_file(nolig_gro)
+            # check_dummies
+            extract_atoms_pc(**paths['check_dummies'], properties=prop['check_dummies'])
+            dummy = bool(os.path.getsize(paths['check_dummies']['check_dummies']))
+
+            # # TODO: Replace by biobb_utils
+            # # Remove ligand
+            # nolig_gro = mut +"_" + ensemble +"_"+pdb_name+".nolig.gro"
+            # system_gro = Gro()
+            # system_gro.read_gro_file(paths['step1_pmx_mutate']['output_structure_path'])
+            # system_gro.remove_residue_entry(292, 'IRE')
+            # system_gro.write_gro_file(nolig_gro)
+
+            # remove_ligand
+            remove_ligand_pc(**paths['remove_ligand'], properties=prop['remove_ligand'])
 
             # step2_gmx_pdb2gmx
             paths['step2_gmx_pdb2gmx']['input_pdb_path'] = nolig_gro

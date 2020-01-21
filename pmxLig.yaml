@@ -8,11 +8,11 @@ mutations:
 
 input_trajs:
   stateA:
-    input_tpr_path: /orozco/projects/BioExcel/BioExcel_EGFR_pmx/MDs/WT/WT_ire_md_1.tpr
-    input_traj_path: /orozco/projects/BioExcel/BioExcel_EGFR_pmx/MDs/WT/WT_ire_md_full.xtc
+    input_tpr_path: /home/bsc23/bsc23210/macshare/biobb_wf_pmxligand/input/WT_ire_md_1.tpr
+    input_traj_path: /home/bsc23/bsc23210/macshare/biobb_wf_pmxligand/input/WT_ire_md_full.xtc
   stateB:
-    input_tpr_path: /orozco/projects/BioExcel/BioExcel_EGFR_pmx/MDs/L858R/L858R_ire_md_1.tpr
-    input_traj_path: /orozco/projects/BioExcel/BioExcel_EGFR_pmx/MDs/L858R/L858R_ire_md_full.xtc
+    input_tpr_path: /home/bsc23/bsc23210/macshare/biobb_wf_pmxligand/input/L858R_ire_md_1.tpr
+    input_traj_path: /home/bsc23/bsc23210/macshare/biobb_wf_pmxligand/input/L858R_ire_md_full.xtc
 
 step0_image:
   paths:
@@ -23,7 +23,6 @@ step0_image:
     ur: compact
     pbc: mol
     center: True
-    #restart: False
 
 step0_trjconv:
   paths:
@@ -34,7 +33,6 @@ step0_trjconv:
     start: 1
     end: 50000
     dt: 500
-    #dt: 3900
     output_name: frame
     output_type: gro
 
@@ -46,6 +44,19 @@ step1_pmx_mutate:
     container_path: singularity
     container_image: /home/bsc23/bsc23210/macshare/singularity/pmx_standalone.sif
 
+check_dummies:
+  paths:
+    input_structure_path: dependency/step1_pmx_mutate/output_structure_path
+    output_structure_path: dummies.gro
+
+remove_ligand:
+  paths:
+    input_structure_path: dependency/step1_pmx_mutate/output_structure_path
+    output_structure_path: apo.gro
+  properties:
+    ligand: "IRE"
+
+
 step2_gmx_pdb2gmx:
   paths:
 #    input_pdb_path: dependency/step1_pmx_mutate/output_structure_path # To be added in the python script (after manualy removing the ligand from the gro structure)
@@ -54,13 +65,13 @@ step2_gmx_pdb2gmx:
   properties:
     force_field : amber99sb-star-ildn-mut
     his: 0 0 1 1 0 0 0
-    gmxlib: /usr/people/adam/pmx/pmx-master/pmx/data/mutff45
+    gmxlib: /home/bsc23/bsc23210/macshare/biobb_wf_pmxligand/mutff45
 
 step2_lig_gmx_appendLigand:
   paths:
     input_top_zip_path: dependency/step2_gmx_pdb2gmx/output_top_zip_path
-    input_itp_path: /orozco/projects/BioExcel/BioExcel_EGFR_pmx/MDs/ITPs/IRE.itp
-    input_posres_itp_path: /orozco/projects/BioExcel/BioExcel_EGFR_pmx/MDs/ITPs/posre_IRE.itp
+    input_itp_path: /home/bsc23/bsc23210/macshare/biobb_wf_pmxligand/input/IRE.itp
+    input_posres_itp_path: /home/bsc23/bsc23210/macshare/biobb_wf_pmxligand/input/posre_IRE.itp
     output_top_zip_path: mut_gmx.lig.top.zip
   properties:
     posres_name : "POSRES_IRE"
@@ -89,7 +100,7 @@ step5_gmx_grompp:
     input_ndx_path: dependency/step4_gmx_makendx/output_ndx_path
     output_tpr_path: em.tpr
   properties:
-    gmxlib: /Users/pau/projects/mnshare/biobb_wf_pmxligand/mutff45
+    gmxlib: /home/bsc23/bsc23210/macshare/biobb_wf_pmxligand/mutff45
     mdp:
       type: minimization
       #integrator: cg
@@ -117,7 +128,7 @@ step7_gmx_grompp:
     input_top_zip_path: dependency/step3_pmx_gentop/output_top_zip_path
     output_tpr_path: eq.tpr
   properties:
-    gmxlib: /Users/pau/projects/mnshare/biobb_wf_pmxligand/mutff45
+    gmxlib: /home/bsc23/bsc23210/macshare/biobb_wf_pmxligand/mutff45
     mdp:
       type: free
       nsteps: 10000
@@ -139,7 +150,7 @@ step9_gmx_grompp:
     #input_ndx_path: dependency/step4_gmx_makendx/output_ndx_path
     output_tpr_path: ti.tpr
   properties:
-    gmxlib: /Users/pau/projects/mnshare/biobb_wf_pmxligand/mutff45
+    gmxlib: /home/bsc23/bsc23210/macshare/biobb_wf_pmxligand/mutff45
     mdp:
       type: free
       nsteps: 25000
