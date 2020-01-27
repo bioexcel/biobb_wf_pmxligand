@@ -112,3 +112,9 @@ traj_comp.xtc
 # pycharm
 .idea
 input/
+
+compss-*
+tmp.*
+wf_pmx/
+dhdl*
+.COMPSs/
